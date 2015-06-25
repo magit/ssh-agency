@@ -139,9 +139,10 @@ remote operations."
 ;;; Hooking into magit
 
 (when (eq system-type 'windows-nt)
-  (advice-add 'magit-push :before #'ssh-agency-ensure)
-  (advice-add 'magit-pull :before #'ssh-agency-ensure)
-  (advice-add 'magit-fetch :before #'ssh-agency-ensure))
+  (dolist (sym-fun '(magit-push magit-push-matching magit-push-tag magit-push-tags
+                     magit-pull magit-pull-current
+                     magit-fetch magit-fetch-current magit-fetch-all))
+    (advice-add sym-fun :before #'ssh-agency-ensure)))
 
 (provide 'ssh-agency)
 
