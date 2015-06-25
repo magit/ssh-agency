@@ -73,7 +73,7 @@
   "Add keys to ssh-agent."
   (call-process-shell-command
    ;; Passphrase can only be entered in console, so use cmd.exe's `start' to get one.
-   (concat "start \"ssh-add\" " (shell-quote-argument ssh-agency-add-executable))))
+   (concat "start /WAIT \"ssh-add\" " (shell-quote-argument ssh-agency-add-executable))))
 
 (defun ssh-agency-start-agent ()
   "Start ssh-agent, and set corresponding environment vars.
