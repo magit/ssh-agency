@@ -136,6 +136,7 @@ Return `t' if agent has keys, `nil' if no agent found, or
     (1 'no-keys)
     (_ nil)))
 
+;;;###autoload
 (defun ssh-agency-ensure (&rest _)
   "Start ssh-agent and add keys, as needed.
 
@@ -149,6 +150,7 @@ remote operations."
 
 ;;; Hooking into magit
 
+;;;###autoload
 (when (eq system-type 'windows-nt)
   (dolist (sym-fun '(magit-push magit-push-matching magit-push-tag magit-push-tags
                      magit-pull magit-pull-current
