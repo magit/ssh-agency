@@ -67,6 +67,15 @@
   :group 'ssh-agency
   :type 'string)
 
+(defcustom ssh-agency-env-file
+  (expand-file-name "~/.ssh/agent.env")
+  "When starting a new agent, write its environment variables to this file.
+
+This is only for the benefit of shells outside of Emacs,
+ssh-agency always finds the agent without consulting this file."
+  :group 'ssh-agency
+  :type 'string)
+
 ;;; Functions
 
 (defun ssh-agency-add-keys ()
@@ -83,7 +92,9 @@ Return the `ssh-agency-status' of the new agent, i.e. `no-keys'."
     (call-process ssh-agency-agent-executable nil '(t t))
     (goto-char 1)
     (while (re-search-forward "^\\(SSH_[^=]+\\)=\\([^;]+\\)" nil t)
-      (setenv (match-string 1) (match-string 2))))
+      (setenv (match-string 1) (match-string 2)))
+    (when ssh-agency-agent-executable
+      (write-file ssh-agency-env-file)))
   'no-keys)
 
 (defun ssh-agency-find-agent ()
