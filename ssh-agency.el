@@ -68,18 +68,8 @@
   :group 'ssh-agency
   :type '(file :must-match t))
 
-(defcustom ssh-agency-home
-  ;; Translation of the code in msysgit's /etc/profile.
-  (--first (and it (file-directory-p it))
-           (list (getenv "HOME")
-                 (ignore-errors (concat (getenv "HOMEDRIVE") (getenv "HOMEPATH")))
-                 (getenv "USERPROFILE")))
-  "The directory ssh uses as `~' (aka $HOME)."
-  :group 'ssh-agency
-  :type 'directory)
-
 (defcustom ssh-agency-env-file
-  (expand-file-name ".ssh/agent.env" ssh-agency-home)
+  (expand-file-name "~/.ssh/agent.env")
   "When starting a new agent, write its environment variables to this file.
 
 This is only for the benefit of shells outside of Emacs,
@@ -89,11 +79,7 @@ ssh-agency always finds the agent without consulting this file."
 
 (defcustom ssh-agency-keys
   (--filter (and (string-match-p "/[^.]+$" it) (ssh-agency-private-key-p it))
-            (append (file-expand-wildcards (expand-file-name "~/.ssh/id*"))
-                    (unless (equal (file-name-as-directory ssh-agency-home)
-                                   (file-name-as-directory (expand-file-name "~")))
-                      (file-expand-wildcards
-                       (expand-file-name ".ssh/id*" ssh-agency-home)))))
+            (file-expand-wildcards (expand-file-name "~/.ssh/id*")))
   "A list of key files to be added to the agent.
 
 `nil' indicates the default for `ssh-add' which is ~/.ssh/id_rsa,
