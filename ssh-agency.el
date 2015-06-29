@@ -77,13 +77,32 @@ ssh-agency always finds the agent without consulting this file."
   :group 'ssh-agency
   :type 'file)
 
+(defcustom ssh-agency-keys nil
+  "A list of key files to be added to the agent.
+
+`nil' indicates the default for `ssh-add' which is ~/.ssh/id_rsa,
+~/.ssh/id_dsa, ~/.ssh/id_ecdsa, ~/.ssh/id_ed25519 and
+~/.ssh/identity."
+  :group 'ssh-agency
+  :type '(choice (repeat (file :must-match t))
+                 (const nil :tag "ssh-add's default")))
+
 ;;; Functions
 
-(defun ssh-agency-add-keys ()
+(defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
   (call-process-shell-command
-   ;; Passphrase can only be entered in console, so use cmd.exe's `start' to get one.
-   (concat "start /WAIT \"ssh-add\" " (shell-quote-argument ssh-agency-add-executable))))
+   ;; Passphrase can only be entered in console, so use cmd.exe's
+   ;; `start' to get one. Quoting both the executable and the first
+   ;; argument breaks Windows' argument parsing, so we use the short
+   ;; name for the executable instead of quoting it.
+   (concat "start /WAIT \"ssh-add\" " (w32-short-file-name ssh-agency-add-executable)
+           ;; When the argument is quoted `ssh-add' doesn't recognize
+           ;; file abbreviations like `~', so expand first (also, it's
+           ;; possible that Emacs and `ssh-add' will have different
+           ;; ideas about what `~' means).
+           " " (mapconcat (lambda (key) (shell-quote-argument (expand-file-name key)))
+                          keys " "))))
 
 (defun ssh-agency-start-agent ()
   "Start ssh-agent, and set corresponding environment vars.
@@ -147,7 +166,7 @@ remote operations."
                 (ssh-agency-find-agent)
                 (ssh-agency-start-agent))
             'no-keys)
-    (ssh-agency-add-keys)))
+    (ssh-agency-add-keys ssh-agency-keys)))
 
 ;;; Hooking into magit
 
