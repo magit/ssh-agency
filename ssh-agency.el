@@ -77,7 +77,21 @@ ssh-agency always finds the agent without consulting this file."
   :group 'ssh-agency
   :type 'file)
 
-(defcustom ssh-agency-keys nil
+(defcustom ssh-agency-home
+  ;; Translation of the code in msysgit's /etc/profile.
+  (--first (and it (file-directory-p it))
+           (list (getenv "HOME")
+                 (ignore-errors (concat (getenv "HOMEDRIVE") (getenv "HOMEPATH")))
+                 (getenv "USERPROFILE")))
+  "The directory ssh uses as `~' (aka $HOME).")
+
+(defcustom ssh-agency-keys
+  (--filter (and (string-match-p "/[^.]+$" it) (ssh-agency-private-key-p it))
+            (append (file-expand-wildcards (expand-file-name "~/.ssh/id*"))
+                    (unless (equal (file-name-as-directory ssh-agency-home)
+                                   (file-name-as-directory (expand-file-name "~")))
+                      (file-expand-wildcards
+                       (expand-file-name ".ssh/id*" ssh-agency-home)))))
   "A list of key files to be added to the agent.
 
 `nil' indicates the default for `ssh-add' which is ~/.ssh/id_rsa,
@@ -88,6 +102,13 @@ ssh-agency always finds the agent without consulting this file."
                  (const nil :tag "ssh-add's default")))
 
 ;;; Functions
+
+(defun ssh-agency-private-key-p (keyfile)
+  "Return non-nil if KEYFILE designates a private key."
+  (with-temp-buffer
+    (insert-file-contents-literally keyfile)
+    (goto-char 1)
+    (looking-at-p "\\`.*BEGIN.*PRIVATE KEY.*$")))
 
 (defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
