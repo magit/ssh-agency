@@ -50,7 +50,7 @@
         git-dir)))
   "Where to look for ssh executables."
   :group 'ssh-agency
-  :type 'string)
+  :type 'directory)
 
 (defcustom ssh-agency-add-executable
   (if ssh-agency-bin-dir
@@ -58,7 +58,7 @@
     (executable-find "ssh-add"))
   "Location of ssh-add executable."
   :group 'ssh-agency
-  :type 'string)
+  :type '(file :must-match t))
 
 (defcustom ssh-agency-agent-executable
   (if ssh-agency-bin-dir
@@ -66,7 +66,7 @@
     (executable-find "ssh-agent"))
   "Location of ssh-agent execuable."
   :group 'ssh-agency
-  :type 'string)
+  :type '(file :must-match t))
 
 (defcustom ssh-agency-env-file
   (expand-file-name "~/.ssh/agent.env")
@@ -75,7 +75,7 @@
 This is only for the benefit of shells outside of Emacs,
 ssh-agency always finds the agent without consulting this file."
   :group 'ssh-agency
-  :type 'string)
+  :type 'file)
 
 ;;; Functions
 
