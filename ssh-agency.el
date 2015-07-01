@@ -77,6 +77,15 @@ ssh-agency always finds the agent without consulting this file."
   :group 'ssh-agency
   :type 'file)
 
+;; This function must be defined before `ssh-agency-keys', because it
+;; is used to define the default value.
+(defun ssh-agency-private-key-p (keyfile)
+  "Return non-nil if KEYFILE designates a private key."
+  (with-temp-buffer
+    (insert-file-contents-literally keyfile)
+    (goto-char 1)
+    (looking-at-p "\\`.*BEGIN.*PRIVATE KEY.*$")))
+
 (defcustom ssh-agency-keys
   (--filter (and (string-match-p "/[^.]+$" it) (ssh-agency-private-key-p it))
             (file-expand-wildcards (expand-file-name "~/.ssh/id*")))
@@ -90,13 +99,6 @@ ssh-agency always finds the agent without consulting this file."
                  (const nil :tag "ssh-add's default")))
 
 ;;; Functions
-
-(defun ssh-agency-private-key-p (keyfile)
-  "Return non-nil if KEYFILE designates a private key."
-  (with-temp-buffer
-    (insert-file-contents-literally keyfile)
-    (goto-char 1)
-    (looking-at-p "\\`.*BEGIN.*PRIVATE KEY.*$")))
 
 (defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
