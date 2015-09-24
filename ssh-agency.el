@@ -42,7 +42,7 @@
 
 (defcustom ssh-agency-bin-dir
   (when (eq system-type 'windows-nt)
-    ;; Git for Windows keeps ssh exes in its bin/ directory.
+    ;; Git for Windows 1.x keeps ssh exes in its bin/ directory.
     (-when-let* ((git-exe (executable-find "git.exe"))
                  (git-dir (directory-file-name (file-name-directory git-exe))))
       (if (equal (file-name-nondirectory git-dir) "cmd")
@@ -53,17 +53,25 @@
   :type 'directory)
 
 (defcustom ssh-agency-add-executable
-  (if ssh-agency-bin-dir
-      (expand-file-name "ssh-add.exe" ssh-agency-bin-dir)
-    (executable-find "ssh-add"))
+  (or (with-temp-buffer
+        (if (= (call-process "git" nil '(t t) nil "-c" "alias.exe=!which ssh-add | cygpath -wf -" "exe") 0)
+            (buffer-substring-no-properties 1 (1- (line-end-position)))))
+      (if ssh-agency-bin-dir
+          (let ((bin (expand-file-name "ssh-add.exe" ssh-agency-bin-dir)))
+            (and (file-executable-p bin) bin)))
+      (executable-find "ssh-add"))
   "Location of ssh-add executable."
   :group 'ssh-agency
   :type '(file :must-match t))
 
 (defcustom ssh-agency-agent-executable
-  (if ssh-agency-bin-dir
-      (expand-file-name "ssh-agent.exe" ssh-agency-bin-dir)
-    (executable-find "ssh-agent"))
+  (or (with-temp-buffer
+        (if (= (call-process "git" nil '(t t) nil "-c" "alias.exe=!which ssh-agent | cygpath -wf -" "exe") 0)
+            (buffer-substring-no-properties 1 (1- (line-end-position)))))
+      (if ssh-agency-bin-dir
+          (let ((bin (expand-file-name "ssh-agent.exe" ssh-agency-bin-dir)))
+            (and (file-executable-p bin) bin)))
+      (executable-find "ssh-agent"))
   "Location of ssh-agent execuable."
   :group 'ssh-agency
   :type '(file :must-match t))
