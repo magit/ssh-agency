@@ -57,7 +57,7 @@
   (or (with-temp-buffer
         (if (save-excursion
               (= (call-process "git" nil '(t t) nil "-c"
-                              (concat "alias.exe=!which " exe " | cygpath -wf -") "exe") 0))
+                              (concat "alias.X=!which " exe " | cygpath -wf -") "X") 0))
             ;; Note: filename *must* include ".exe" or
             ;; `w32-short-file-name' returns nil.
             (executable-find (buffer-substring-no-properties 1 (line-end-position)))))
