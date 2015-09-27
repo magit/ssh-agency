@@ -52,26 +52,25 @@
   :group 'ssh-agency
   :type 'directory)
 
-(defcustom ssh-agency-add-executable
+(defun ssh-agency-executable-find (exe)
+  "Computes default value for `ssh-agency-EXE-executable'."
   (or (with-temp-buffer
-        (if (= (call-process "git" nil '(t t) nil "-c" "alias.exe=!which ssh-add | cygpath -wf -" "exe") 0)
+        (if (= (call-process "git" nil '(t t) nil "-c"
+                             (concat "alias.exe=!which " exe " | cygpath -wf -") "exe") 0)
             (buffer-substring-no-properties 1 (1- (line-end-position)))))
       (if ssh-agency-bin-dir
-          (let ((bin (expand-file-name "ssh-add.exe" ssh-agency-bin-dir)))
+          (let ((bin (expand-file-name exe ssh-agency-bin-dir)))
             (and (file-executable-p bin) bin)))
-      (executable-find "ssh-add"))
+      (executable-find exe)))
+
+(defcustom ssh-agency-add-executable
+  (ssh-agency-executable-find "ssh-add")
   "Location of ssh-add executable."
   :group 'ssh-agency
   :type '(file :must-match t))
 
 (defcustom ssh-agency-agent-executable
-  (or (with-temp-buffer
-        (if (= (call-process "git" nil '(t t) nil "-c" "alias.exe=!which ssh-agent | cygpath -wf -" "exe") 0)
-            (buffer-substring-no-properties 1 (1- (line-end-position)))))
-      (if ssh-agency-bin-dir
-          (let ((bin (expand-file-name "ssh-agent.exe" ssh-agency-bin-dir)))
-            (and (file-executable-p bin) bin)))
-      (executable-find "ssh-agent"))
+  (ssh-agency-executable-find "ssh-agent")
   "Location of ssh-agent execuable."
   :group 'ssh-agency
   :type '(file :must-match t))
