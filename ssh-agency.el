@@ -55,11 +55,12 @@
 (defun ssh-agency-executable-find (exe)
   "Computes default value for `ssh-agency-EXE-executable'."
   (or (with-temp-buffer
-        (if (= (call-process "git" nil '(t t) nil "-c"
-                             (concat "alias.exe=!which " exe " | cygpath -wf -") "exe") 0)
+        (if (save-excursion
+              (= (call-process "git" nil '(t t) nil "-c"
+                              (concat "alias.exe=!which " exe " | cygpath -wf -") "exe") 0))
             ;; Note: filename *must* include ".exe" or
             ;; `w32-short-file-name' returns nil.
-            (executable-find (buffer-substring-no-properties 1 (1- (line-end-position))))))
+            (executable-find (buffer-substring-no-properties 1 (line-end-position)))))
       (if ssh-agency-bin-dir
           (let ((bin (expand-file-name exe ssh-agency-bin-dir)))
             (and (file-executable-p bin) bin)))
