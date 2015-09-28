@@ -117,7 +117,7 @@ ssh-agency always finds the agent without consulting this file."
    ;; `start' to get one. Quoting both the executable and the first
    ;; argument breaks Windows' argument parsing, so we use the short
    ;; name for the executable instead of quoting it.
-   (concat "start /WAIT \"ssh-add\" " (w32-short-file-name ssh-agency-add-executable)
+   (concat "start \"ssh-add\" /WAIT " (w32-short-file-name ssh-agency-add-executable)
            ;; When the argument is quoted `ssh-add' doesn't recognize
            ;; file abbreviations like `~', so expand first (also, it's
            ;; possible that Emacs and `ssh-add' will have different
