@@ -38,7 +38,8 @@
 ;;; Options
 
 (defgroup ssh-agency ()
-  "Using ssh-agent on `windows-nt'.")
+  "Using ssh-agent on `windows-nt'."
+  :group 'comm)
 
 (defcustom ssh-agency-bin-dir
   (when (eq system-type 'windows-nt)
