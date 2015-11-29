@@ -55,13 +55,18 @@
 
 (defun ssh-agency-executable-find (exe)
   "Computes default value for `ssh-agency-EXE-executable'."
-  (or (ignore-errors
-        ;; Note: filename *must* include ".exe" or
+  (or (--when-let
+          (ignore-errors
+            ;; This will fail on Windows Git 1.x because it doesn't
+            ;; handle upper case aliases.  This is good because then
+            ;; we won't find and fail to use git-gui--askpass for
+            ;; SSH_ASKPASS.
+            (car (process-lines
+                  "git" "-c" "alias.X=!x() { which \"$1\" | cygpath -mf -; }; x"
+                  "X" exe)))
+        ;; Note: filename *must* include ".exe" suffix (if any) or
         ;; `w32-short-file-name' returns nil.
-        (executable-find
-         (car (process-lines "git" "-c"
-                             "alias.X=!x() { which \"$1\" | cygpath -wf -; }; x"
-                             "X" exe))))
+        (or (executable-find it) it))
       (if ssh-agency-bin-dir
           (let ((bin (expand-file-name exe ssh-agency-bin-dir)))
             (and (file-executable-p bin) bin)))
@@ -78,6 +83,22 @@
   "Location of ssh-agent execuable."
   :group 'ssh-agency
   :type '(file :must-match t))
+
+(defvar ssh-agency-gui-askpass-env nil)
+
+(defcustom ssh-agency-gui-askpass-executable
+  (-when-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
+               (path (ignore-errors
+                       (car (process-lines
+                             "git" "-c" "alias.X=!echo \"$PATH\"" "X")))))
+    (setq ssh-agency-gui-askpass-env
+          (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
+                (concat "PATH=" path)))
+    exe)
+  "Location of SSH_ASKPASS executable."
+  :group 'ssh-agency
+  :type '(choice (file :must-match t)
+                 (nil :tag "Use console box.")))
 
 (defcustom ssh-agency-env-file
   (expand-file-name "~/.ssh/agent.env")
@@ -113,18 +134,19 @@ ssh-agency always finds the agent without consulting this file."
 
 (defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
-  (call-process-shell-command
-   ;; Passphrase can only be entered in console, so use cmd.exe's
-   ;; `start' to get one. Quoting both the executable and the first
-   ;; argument breaks Windows' argument parsing, so we use the short
-   ;; name for the executable instead of quoting it.
-   (concat "start \"ssh-add\" /WAIT " (w32-short-file-name ssh-agency-add-executable)
-           ;; When the argument is quoted `ssh-add' doesn't recognize
-           ;; file abbreviations like `~', so expand first (also, it's
-           ;; possible that Emacs and `ssh-add' will have different
-           ;; ideas about what `~' means).
-           " " (mapconcat (lambda (key) (shell-quote-argument (expand-file-name key)))
-                          keys " "))))
+  (if ssh-agency-gui-askpass-executable
+      (let ((process-environment (append ssh-agency-gui-askpass-env
+                                         process-environment)))
+        ;; Using short filename to avoid Emacs bug#8541.
+        (apply #'call-process (w32-short-file-name ssh-agency-add-executable)
+               nil nil nil
+               (mapcar #'expand-file-name keys)))
+    (call-process-shell-command
+     ;; Git 1.x: Passphrase can only be entered in console, so use
+     ;; cmd.exe's `start' to get one.
+     (concat "start \"ssh-add\" /WAIT " (w32-short-file-name ssh-agency-add-executable)
+             " " (mapconcat (lambda (key) (shell-quote-argument (expand-file-name key)))
+                            keys " ")))))
 
 (defun ssh-agency-start-agent ()
   "Start ssh-agent, and set corresponding environment vars.
