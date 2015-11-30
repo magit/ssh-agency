@@ -201,11 +201,10 @@ Return `t' if agent has keys, `nil' if no agent found, or
     (_ nil)))
 
 ;;;###autoload
-(defun ssh-agency-ensure (&rest _)
+(defun ssh-agency-ensure ()
   "Start ssh-agent and add keys, as needed.
 
-Intended to be used as advice for magit functions that initiate
-remote operations."
+Intended to be added to `magit-credential-hook'."
   (when (eq (or (ssh-agency-status)
                 (ssh-agency-find-agent)
                 (ssh-agency-start-agent))
@@ -215,11 +214,7 @@ remote operations."
 ;;; Hooking into magit
 
 ;;;###autoload
-(when (eq system-type 'windows-nt)
-  (dolist (sym-fun '(magit-push magit-push-matching magit-push-tag magit-push-tags
-                     magit-pull magit-pull-current
-                     magit-fetch magit-fetch-current magit-fetch-all))
-    (advice-add sym-fun :before #'ssh-agency-ensure)))
+(add-hook 'magit-credential-hook 'ssh-agency-ensure)
 
 (provide 'ssh-agency)
 
