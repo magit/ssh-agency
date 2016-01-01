@@ -73,13 +73,13 @@
       (executable-find exe)))
 
 (defcustom ssh-agency-add-executable
-  (ssh-agency-executable-find "ssh-add.exe")
+  (ssh-agency-executable-find "ssh-add")
   "Location of ssh-add executable."
   :group 'ssh-agency
   :type '(file :must-match t))
 
 (defcustom ssh-agency-agent-executable
-  (ssh-agency-executable-find "ssh-agent.exe")
+  (ssh-agency-executable-find "ssh-agent")
   "Location of ssh-agent execuable."
   :group 'ssh-agency
   :type '(file :must-match t))
@@ -87,18 +87,21 @@
 (defvar ssh-agency-gui-askpass-env nil)
 
 (defcustom ssh-agency-gui-askpass-executable
-  (-when-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
-               (path (ignore-errors
-                       (car (process-lines
-                             "git" "-c" "alias.X=!echo \"$PATH\"" "X")))))
-    (setq ssh-agency-gui-askpass-env
-          (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
-                (concat "PATH=" path)))
-    exe)
-  "Location of SSH_ASKPASS executable."
+  (when (eq system-type 'windows-nt)
+    (-when-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
+                 (path (ignore-errors
+                         (car (process-lines
+                               "git" "-c" "alias.X=!echo \"$PATH\"" "X")))))
+      (setq ssh-agency-gui-askpass-env
+            (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
+                  (concat "PATH=" path)))
+      exe))
+  "Location of SSH_ASKPASS executable.
+
+This is only needed on `windows-nt' systems to compensate for the
+lack of PTYs."
   :group 'ssh-agency
-  :type '(choice (file :must-match t)
-                 (nil :tag "Use console box.")))
+  :type '(choice (file :must-match t) (const nil)))
 
 (defcustom ssh-agency-env-file
   (expand-file-name "~/.ssh/agent.env")
@@ -134,19 +137,23 @@ ssh-agency always finds the agent without consulting this file."
 
 (defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
-  (if ssh-agency-gui-askpass-executable
+  (setq keys (mapcar #'expand-file-name keys))
+  (let ((ssh-add (if (fboundp 'w32-short-file-name)
+                     ;; Using short filename to avoid Emacs bug#8541.
+                     (w32-short-file-name ssh-agency-add-executable)
+                   ssh-agency-add-executable)))
+    (cond
+     (ssh-agency-gui-askpass-executable
       (let ((process-environment (append ssh-agency-gui-askpass-env
                                          process-environment)))
-        ;; Using short filename to avoid Emacs bug#8541.
-        (apply #'call-process (w32-short-file-name ssh-agency-add-executable)
-               nil nil nil
-               (mapcar #'expand-file-name keys)))
-    (call-process-shell-command
-     ;; Git 1.x: Passphrase can only be entered in console, so use
-     ;; cmd.exe's `start' to get one.
-     (concat "start \"ssh-add\" /WAIT " (w32-short-file-name ssh-agency-add-executable)
-             " " (mapconcat (lambda (key) (shell-quote-argument (expand-file-name key)))
-                            keys " ")))))
+        (apply #'call-process ssh-add nil nil nil keys)))
+     ((eq system-type 'windows-nt)
+      (call-process-shell-command
+       ;; Git 1.x: Passphrase can only be entered in console, so use
+       ;; cmd.exe's `start' to get one.
+       (concat "start \"ssh-add\" /WAIT " ssh-add " "
+               (mapconcat #'shell-quote-argument keys " "))))
+     (t (apply #'call-process ssh-add nil nil nil keys)))))
 
 (defun ssh-agency-start-agent ()
   "Start ssh-agent, and set corresponding environment vars.
@@ -167,9 +174,11 @@ Return the `ssh-agency-status' of the new agent, i.e. `no-keys'."
 If an agent is found, set the corresponding environment vars.
 Return `ssh-agency-status' of the agent."
   (let* ((status nil)
+         (ssh-agent-exe (if (eq system-type 'windows-nt)
+                            "ssh-agent.exe" "ssh-agent"))
          (pid
           (--first (-let (((&alist 'comm comm 'user user) (process-attributes it)))
-                     (and (string= comm "ssh-agent.exe")
+                     (and (string= comm ssh-agent-exe)
                           (string= user user-login-name)))
                    (list-system-processes)))
          (sock
@@ -177,10 +186,12 @@ Return `ssh-agency-status' of the agent."
             (catch 'ssh-sock
               (dolist (sock-dir (directory-files temporary-file-directory t "\\`ssh-" t))
                 (dolist (sock-file (directory-files sock-dir t "\\`agent\.[0-9]+\\'" t))
-                  ;; Follow the lead of msysgit's start-ssh-agent.cmd: replace %TEMP% with "/tmp".
-                  (setq sock-file (replace-regexp-in-string
-                                   (regexp-quote temporary-file-directory)
-                                   "/tmp/" sock-file))
+                  (when (eq system-type 'windows-nt)
+                    ;; Follow the lead of msysgit's start-ssh-agent.cmd:
+                    ;; replace %TEMP% with "/tmp".
+                    (setq sock-file (replace-regexp-in-string
+                                     (regexp-quote temporary-file-directory)
+                                     "/tmp/" sock-file)))
                   (let ((process-environment (cons (concat "SSH_AUTH_SOCK=" sock-file)
                                                    process-environment)))
                     (when (setq status (ssh-agency-status))
