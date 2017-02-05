@@ -1,13 +1,13 @@
-;;; ssh-agency.el --- use ssh-agent on win32 from Emacs -*- lexical-binding: t -*-
+;;; ssh-agency.el --- manage ssh-agent from Emacs -*- lexical-binding: t -*-
 
-;; Copyright (C) 2015  The Magit Project Contributors
+;; Copyright (C) 2015-2017  The Magit Project Contributors
 
 ;; Author: Noam Postavsky <npostavs@user.sourceforge.net>
 ;; Maintainer: Noam Postavsky <npostavs@user.sourceforge.net>
 
 ;; Package-Requires: ((emacs "24.4") (dash "2.10.0"))
 ;; URL: https://github.com/magit/ssh-agency
-;; Version: 0.2
+;; Version: 0.3
 
 ;; This file is not part of GNU Emacs.
 
@@ -30,6 +30,9 @@
 ;; passphrases from the Windows console, and set the needed
 ;; environment variables in Emacs, so that pushes and pulls from magit
 ;; will not require entering any passphrase.
+;;
+;; It can also be useful on Unix-like platforms to delay having to
+;; enter your passphrase until the first time you push to a remote.
 
 ;;; Code:
 
@@ -38,7 +41,7 @@
 ;;; Options
 
 (defgroup ssh-agency ()
-  "Using ssh-agent on `windows-nt'."
+  "Managing ssh-agent from Emacs."
   :group 'comm)
 
 (defcustom ssh-agency-bin-dir
