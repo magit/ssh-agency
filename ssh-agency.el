@@ -60,13 +60,11 @@
   "Computes default value for `ssh-agency-EXE-executable'."
   (or (--when-let
           (ignore-errors
-            ;; This will fail on Windows Git 1.x because it doesn't
-            ;; handle upper case aliases.  This is good because then
-            ;; we won't find and fail to use git-gui--askpass for
-            ;; SSH_ASKPASS.
+            ;; This will fail on Windows Git 1.x because it lacks
+            ;; `cygpath'.  For that version we search manually anyway.
             (car (process-lines
-                  "git" "-c" "alias.X=!x() { which \"$1\" | cygpath -mf -; }; x"
-                  "X" exe)))
+                  "git" "-c" "alias.x=!x() { which \"$1\" | cygpath -mf -; }; x"
+                  "x" exe)))
         ;; Note: filename *must* include ".exe" suffix (if any) or
         ;; `w32-short-file-name' returns nil.
         (or (executable-find it) it))
@@ -94,7 +92,7 @@
     (-when-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
                  (path (ignore-errors
                          (car (process-lines
-                               "git" "-c" "alias.X=!echo \"$PATH\"" "X")))))
+                               "git" "-c" "alias.x=!echo \"$PATH\"" "x")))))
       (setq ssh-agency-gui-askpass-env
             (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
                   (concat "PATH=" path)))
