@@ -37,6 +37,7 @@
 ;;; Code:
 
 (require 'dash)
+(eval-when-compile (require 'cl-lib))
 
 ;;; Options
 
@@ -134,7 +135,74 @@ ssh-agency always finds the agent without consulting this file."
   :type '(choice (repeat (file :must-match t))
                  (const nil :tag "ssh-add's default")))
 
+(defconst ssh-agency-socket-regexp
+  ;; Try to match
+  ;; - /tmp/ssh-XXXXX/agent.NNN (ssh-agent default)
+  ;; - /run/user/[uid]/keyring/ssh (gnome-keyring-daemon 1)
+  ;; - ~/.cache/keyring-XXXXX/ssh (gnome-keyring-daemon 2)
+  ;; But don't match
+  ;; - /run/user/[uid]/gnupg/S.gpg-agent.ssh
+  "/\\(?:agent[.][0-9]+\\|ssh\\)\\'")
+
+(defcustom ssh-agency-socket-locaters
+  `(,@(when (executable-find "ss")
+        `((ssh-agency-find-socket-from-ss
+           :glob "*ssh*" :regexp ,ssh-agency-socket-regexp)))
+    ,@(when     ; Windows has a netstat command, but it won't help us.
+          (and (not (eq system-type 'windows-nt))
+               (executable-find "netstat"))
+        `((ssh-agency-find-socket-from-netstat
+           :regexp ,ssh-agency-socket-regexp)))
+    ;; Look in ssh-agent's default location.
+    (ssh-agency-find-socket-from-glob
+     ,(concat temporary-file-directory "ssh-*/agent.*")))
+  "List of (FUN . ARGS) to search for ssh-agent sockets."
+  :group 'ssh-agency
+  :type '(alist :key-type function))
+
 ;;; Functions
+
+(defun ssh-agency-socket-status (socket)
+  "Return `ssh-agency-status' of agent corresponding to SOCKET."
+  (when (eq system-type 'windows-nt)
+    ;; Follow the lead of msysgit's start-ssh-agent.cmd:
+    ;; replace %TEMP% with "/tmp".
+    (setq socket (replace-regexp-in-string
+                  (concat "\\`" (regexp-quote temporary-file-directory))
+                  "/tmp/" socket)))
+  (let ((process-environment (cons (concat "SSH_AUTH_SOCK=" socket)
+                                   process-environment)))
+    (ssh-agency-status)))
+
+(cl-defun ssh-agency-find-socket-from-ss (&key glob regexp)
+  "Use `ss' to find an ssh-agent socket matching GLOB and/or REGEXP."
+  (catch 'socket
+    (dolist (sock-line (apply #'process-lines
+                              "ss" "--no-header" "--listening" "--family=unix"
+                              (if glob (list "src" glob))))
+      (let* ((socket (nth 4 (split-string sock-line)))
+             (status (and (or (null regexp) (string-match-p regexp socket))
+                          (ssh-agency-socket-status socket))))
+        (when status
+          (throw 'socket (cons status socket)))))))
+
+(cl-defun ssh-agency-find-socket-from-netstat (&key regexp)
+  "Use `netstat' to find an ssh-agent socket REGEXP."
+  (catch 'socket
+    (dolist (sock-line (process-lines "netstat" "-f" "unix"))
+      (let ((socket (car (last (split-string sock-line))))
+            (status (and (or (null regexp) (string-match-p regexp socket))
+                         (ssh-agency-socket-status socket))))
+        (when status
+          (throw 'socket (cons status socket)))))))
+
+(cl-defun ssh-agency-find-socket-from-glob (glob)
+  "Find an ssh-agent socket matching GLOB."
+  (catch 'socket
+    (dolist (socket (file-expand-wildcards glob t))
+      (let ((status (ssh-agency-socket-status socket)))
+        (when status
+          (throw 'socket (cons status socket)))))))
 
 (defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
@@ -174,33 +242,24 @@ Return the `ssh-agency-status' of the new agent, i.e. `no-keys'."
 
 If an agent is found, set the corresponding environment vars.
 Return `ssh-agency-status' of the agent."
-  (let* ((status nil)
-         (ssh-agent-exe (if (eq system-type 'windows-nt)
-                            "ssh-agent.exe" "ssh-agent"))
+  (let* ((ssh-agent-exe
+          (if (eq system-type 'windows-nt)
+              '("ssh-agent.exe")
+            ;; gnome-keyring-daemon implements ssh-agent functionality.
+            '("ssh-agent" "gnome-keyring-d")))
          (pid
           (--first (-let (((&alist 'comm comm 'user user) (process-attributes it)))
-                     (and (string= comm ssh-agent-exe)
+                     (and (member comm ssh-agent-exe)
                           (string= user user-login-name)))
-                   (list-system-processes)))
-         (sock
-          (when pid
-            (catch 'ssh-sock
-              (dolist (sock-dir (directory-files temporary-file-directory t "\\`ssh-" t))
-                (dolist (sock-file (directory-files sock-dir t "\\`agent\.[0-9]+\\'" t))
-                  (when (eq system-type 'windows-nt)
-                    ;; Follow the lead of msysgit's start-ssh-agent.cmd:
-                    ;; replace %TEMP% with "/tmp".
-                    (setq sock-file (replace-regexp-in-string
-                                     (regexp-quote temporary-file-directory)
-                                     "/tmp/" sock-file)))
-                  (let ((process-environment (cons (concat "SSH_AUTH_SOCK=" sock-file)
-                                                   process-environment)))
-                    (when (setq status (ssh-agency-status))
-                      (throw 'ssh-sock sock-file)))))))))
-    (when (and pid sock)
-      (setenv "SSH_AGENT_PID" (number-to-string pid))
-      (setenv "SSH_AUTH_SOCK" sock))
-    status))
+                   (list-system-processes))))
+    (when pid
+      (cl-loop for (fun . args) in ssh-agency-socket-locaters
+               for (status . socket) = (apply fun args)
+               when socket return
+               (progn
+                 (setenv "SSH_AGENT_PID" (number-to-string pid))
+                 (setenv "SSH_AUTH_SOCK" socket)
+                 status)))))
 
 (defun ssh-agency-status ()
   "Check the status of the ssh-agent.
