@@ -86,6 +86,15 @@
   :group 'ssh-agency
   :type '(file :must-match t))
 
+(defcustom ssh-agency-agent-exe-names
+  (if (eq system-type 'windows-nt)
+      '("ssh-agent.exe")
+    ;; gnome-keyring-daemon implements ssh-agent functionality.
+    '("ssh-agent" "gnome-keyring-d"))
+  "List of possible agent names."
+  :group 'ssh-agency
+  :type '(repeat string))
+
 (defvar ssh-agency-gui-askpass-env nil)
 
 (defcustom ssh-agency-gui-askpass-executable
@@ -242,14 +251,9 @@ Return the `ssh-agency-status' of the new agent, i.e. `no-keys'."
 
 If an agent is found, set the corresponding environment vars.
 Return `ssh-agency-status' of the agent."
-  (let* ((ssh-agent-exe
-          (if (eq system-type 'windows-nt)
-              '("ssh-agent.exe")
-            ;; gnome-keyring-daemon implements ssh-agent functionality.
-            '("ssh-agent" "gnome-keyring-d")))
-         (pid
+  (let ((pid
           (--first (-let (((&alist 'comm comm 'user user) (process-attributes it)))
-                     (and (member comm ssh-agent-exe)
+                     (and (member comm ssh-agency-agent-exe-names)
                           (string= user user-login-name)))
                    (list-system-processes))))
     (when pid
