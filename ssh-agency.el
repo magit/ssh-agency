@@ -95,24 +95,40 @@
   :group 'ssh-agency
   :type '(repeat string))
 
-(defvar ssh-agency-gui-askpass-env nil)
-
-(defcustom ssh-agency-gui-askpass-executable
+(defcustom ssh-agency-askpass
   (when (eq system-type 'windows-nt)
     (-when-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
                  (path (ignore-errors
                          (car (process-lines
                                "git" "-c" "alias.x=!echo \"$PATH\"" "x")))))
-      (setq ssh-agency-gui-askpass-env
-            (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
-                  (concat "PATH=" path)))
-      exe))
-  "Location of SSH_ASKPASS executable.
+      ;; Windows won't have DISPLAY, but we need to fake it for
+      ;; SSH_ASKPASS to be called.
+      (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
+            (concat "PATH=" path))))
+  "If non-nil, let ssh-askpass query for the passphrase.
+If the value is a list, it should be in the same format as
+`process-environment', and specifies what environment variables
+to bind while running `ssh-add' (typically specifying a value for
+SSH_ASKPASS).
 
-This is only needed on `windows-nt' systems to compensate for the
-lack of PTYs."
+If nil, read the passphrase from Emacs (note, this requires using
+a pty, and so will not work on `windows-nt' systems)."
   :group 'ssh-agency
-  :type '(choice (file :must-match t) (const nil)))
+  :type '(choice (const :tag "read passphrase from Emacs" nil)
+                 (const :tag "read passphrase with ssh-askpass" t)
+                 (repeat string)))
+
+(defcustom ssh-agency-gui-askpass-executable nil
+  "Use `ssh-agency-askpass' instead."
+  :group 'ssh-agency
+  :type '(choice (file :must-match t) (const nil))
+  :set (lambda (sym value)
+         (when (stringp value)
+           (setq-default ssh-agency-askpass
+                         (list (concat "SSH_ASKPASS=" value))))
+         (set-default sym value)))
+(make-obsolete-variable 'ssh-agency-gui-askpass-executable
+                        'ssh-agency-askpass "0.4")
 
 (defcustom ssh-agency-env-file
   (expand-file-name "~/.ssh/agent.env")
@@ -213,6 +229,19 @@ ssh-agency always finds the agent without consulting this file."
         (when status
           (throw 'socket (cons status socket)))))))
 
+(defun ssh-agency-askpass-filter (proc string)
+  (condition-case ()
+      (with-current-buffer (process-buffer proc)
+        (goto-char (point-max))
+        (insert string)                 ; Record all output.
+        (when (string-match-p "^.*: *\\'" string)
+          (let ((pwd (read-passwd string)))
+            (send-string proc pwd)
+            (clear-string pwd)
+            (send-string proc "\n"))))
+    (quit (kill-process proc)
+          (process-put proc :user-quit t))))
+
 (defun ssh-agency-add-keys (keys)
   "Add keys to ssh-agent."
   (setq keys (mapcar #'expand-file-name keys))
@@ -220,18 +249,36 @@ ssh-agency always finds the agent without consulting this file."
                      ;; Using short filename to avoid Emacs bug#8541.
                      (w32-short-file-name ssh-agency-add-executable)
                    ssh-agency-add-executable)))
-    (cond
-     (ssh-agency-gui-askpass-executable
-      (let ((process-environment (append ssh-agency-gui-askpass-env
-                                         process-environment)))
-        (apply #'call-process ssh-add nil nil nil keys)))
-     ((eq system-type 'windows-nt)
-      (call-process-shell-command
-       ;; Git 1.x: Passphrase can only be entered in console, so use
-       ;; cmd.exe's `start' to get one.
-       (concat "start \"ssh-add\" /WAIT " ssh-add " "
-               (mapconcat #'shell-quote-argument keys " "))))
-     (t (apply #'call-process ssh-add nil nil nil keys)))))
+    (with-temp-buffer     ; Catch any process output in a temp buffer.
+      (let ((exit-status
+             (cond
+              (ssh-agency-askpass
+               (let ((process-environment (append (when (listp ssh-agency-askpass)
+                                                    ssh-agency-askpass)
+                                                  process-environment)))
+                 (apply #'call-process ssh-add nil '(t t) nil keys)))
+              ((eq system-type 'windows-nt)
+               (call-process-shell-command
+                ;; Git 1.x: Passphrase can only be entered in console, so use
+                ;; cmd.exe's `start' to get one.
+                (concat "start \"ssh-add\" /WAIT " ssh-add " "
+                        (mapconcat #'shell-quote-argument keys " "))
+                ;; We probably can't get any output in this case, but
+                ;; it doesn't hurt to try.
+                nil '(t t)))
+              (t (let* ((process-connection-type t) ; pty needed for filter.
+                        (proc (apply #'start-process "ssh-add" (current-buffer)
+                                     ssh-add keys)))
+                   (setf (process-filter proc) #'ssh-agency-askpass-filter)
+                   (while (eq (process-status proc) 'run)
+                     (accept-process-output proc))
+                   (if (process-get proc :user-quit)
+                       0 ;; Quitting is not an error.
+                     (process-exit-status proc)))))))
+        (unless (eq 0 exit-status)
+          (lwarn '(ssh-agency ssh-add) :error
+                 "`%s' failed with status %d: %s"
+                 ssh-add exit-status (buffer-string)))))))
 
 (defun ssh-agency-start-agent ()
   "Start ssh-agent, and set corresponding environment vars.
