@@ -215,9 +215,9 @@ ssh-agency always finds the agent without consulting this file."
   "Use `netstat' to find an ssh-agent socket REGEXP."
   (catch 'socket
     (dolist (sock-line (process-lines "netstat" "-f" "unix"))
-      (let ((socket (car (last (split-string sock-line))))
-            (status (and (or (null regexp) (string-match-p regexp socket))
-                         (ssh-agency-socket-status socket))))
+      (let* ((socket (car (last (split-string sock-line))))
+             (status (and (or (null regexp) (string-match-p regexp socket))
+                          (ssh-agency-socket-status socket))))
         (when status
           (throw 'socket (cons status socket)))))))
 
