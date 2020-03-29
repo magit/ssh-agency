@@ -7,7 +7,7 @@
 
 ;; Package-Requires: ((emacs "24.4") (dash "2.10.0"))
 ;; URL: https://github.com/magit/ssh-agency
-;; Version: 0.4
+;; Version: 0.4.1
 
 ;; This file is not part of GNU Emacs.
 
