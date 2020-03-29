@@ -203,9 +203,10 @@ ssh-agency always finds the agent without consulting this file."
   "Use `ss' to find an ssh-agent socket matching GLOB and/or REGEXP."
   (catch 'socket
     ;; The "--no-header" flag isn't used in order to support older ss versions.
-    (dolist (sock-line (cdr (apply #'process-lines
-                                   "ss" "--listening" "--family=unix"
-                                   (if glob (list "src" glob)))))
+    (dolist (sock-line (cdr (with-demoted-errors "ssh-agency-find-socket: %S"
+                              (apply #'process-lines
+                                     "ss" "--listening" "--family=unix"
+                                     (if glob (list "src" glob))))))
       (let* ((socket (nth 4 (split-string sock-line)))
              (status (and (or (null regexp) (string-match-p regexp socket))
                           (ssh-agency-socket-status socket))))
@@ -215,7 +216,9 @@ ssh-agency always finds the agent without consulting this file."
 (cl-defun ssh-agency-find-socket-from-netstat (&key regexp)
   "Use `netstat' to find an ssh-agent socket REGEXP."
   (catch 'socket
-    (dolist (sock-line (process-lines "netstat" "-f" "unix"))
+    (dolist (sock-line (with-demoted-errors
+                           "ssh-agency-find-socket-from-netstat: %S"
+                         (process-lines "netstat" "-f" "unix")))
       (let* ((socket (car (last (split-string sock-line))))
              (status (and (or (null regexp) (string-match-p regexp socket))
                           (ssh-agency-socket-status socket))))
