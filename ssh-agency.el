@@ -170,7 +170,13 @@ ssh-agency always finds the agent without consulting this file."
   "/\\(?:agent[.][0-9]+\\|ssh\\)\\'")
 
 (defcustom ssh-agency-socket-locaters
-  `(,@(when (executable-find "ss")
+  `(
+    ;; OpenSSH's Systemd unit: ssh-agent.service
+    ,@(let ((dir (getenv "XDG_RUNTIME_DIR")))
+        (and dir
+             `((ssh-agency-find-socket-from-glob
+                ,(concat dir "/" "ssh-agent.socket")))))
+    ,@(when (executable-find "ss")
         `((ssh-agency-find-socket-from-ss
            :glob "*ssh*" :regexp ,ssh-agency-socket-regexp)))
     ,@(when     ; Windows has a netstat command, but it won't help us.
