@@ -316,13 +316,14 @@ Return `ssh-agency-status' of the agent."
                                 (string= .user user-login-name))))
                        (list-system-processes))))
     (when pid
-      (cl-loop for (fun . args) in ssh-agency-socket-locaters
-               for (status . socket) = (apply fun args)
-               when socket return
-               (progn
-                 (setenv "SSH_AGENT_PID" (number-to-string pid))
-                 (setenv "SSH_AUTH_SOCK" socket)
-                 status)))))
+      (seq-find (pcase-lambda (`(,fun . ,args))
+                  (pcase-let ((`(,status . ,socket) (apply fun args)))
+                    (and socket
+                         (progn
+                           (setenv "SSH_AGENT_PID" (number-to-string pid))
+                           (setenv "SSH_AUTH_SOCK" socket)
+                           status))))
+                ssh-agency-socket-locaters))))
 
 (defun ssh-agency-status ()
   "Check the status of the ssh-agent.
