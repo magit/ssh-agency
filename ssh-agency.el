@@ -156,9 +156,9 @@ ssh-agency always finds the agent without consulting this file."
               (file-expand-wildcards (expand-file-name "~/.ssh/id*")))
   "A list of key files to be added to the agent.
 
-`nil' indicates the default for `ssh-add' which is ~/.ssh/id_rsa,
-~/.ssh/id_dsa, ~/.ssh/id_ecdsa, ~/.ssh/id_ed25519 and
-~/.ssh/identity."
+If nil, use `ssh-add' default, which is \"~/.ssh/id_rsa\",
+\"~/.ssh/id_dsa\", \"~/.ssh/id_ecdsa\", \"~/.ssh/id_ed25519\" and
+\"~/.ssh/identity\"."
   :group 'ssh-agency
   :type '(choice (repeat (file :must-match t))
                  (const :tag "ssh-add's default" nil)))
@@ -327,8 +327,8 @@ Return `ssh-agency-status' of the agent."
 (defun ssh-agency-status ()
   "Check the status of the ssh-agent.
 
-Return `t' if agent has keys, `nil' if no agent found, or
-`no-keys' if agent is running but has no keys."
+Return t if agent has keys, nil if no agent found,
+or `no-keys' if agent is running but has no keys."
   (pcase (call-process ssh-agency-add-executable nil nil nil "-l")
     (0 t)
     (1 'no-keys)
