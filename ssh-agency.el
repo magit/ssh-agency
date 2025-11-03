@@ -1,6 +1,6 @@
 ;;; ssh-agency.el --- manage ssh-agent from Emacs -*- lexical-binding: t -*-
 
-;; Copyright (C) 2015-2017  The Magit Project Contributors
+;; Copyright (C) 2015-2025  The Magit Project Contributors
 
 ;; Author: Noam Postavsky <npostavs@user.sourceforge.net>
 ;; Maintainer: Noam Postavsky <npostavs@user.sourceforge.net>
