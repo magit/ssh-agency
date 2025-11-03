@@ -4,9 +4,9 @@
 
 ;; Author: Noam Postavsky <npostavs@user.sourceforge.net>
 ;; Maintainer: Noam Postavsky <npostavs@user.sourceforge.net>
+;; Homepage: https://github.com/magit/ssh-agency
 
-;; Package-Requires: ((emacs "24.4") (dash "2.10.0"))
-;; URL: https://github.com/magit/ssh-agency
+;; Package-Requires: ((emacs "26.1"))
 ;; Version: 0.4.1
 
 ;; This file is not part of GNU Emacs.
@@ -36,8 +36,8 @@
 
 ;;; Code:
 
-(require 'dash)
 (eval-when-compile (require 'cl-lib))
+(eval-when-compile (require 'subr-x))
 
 ;;; Options
 
@@ -48,8 +48,8 @@
 (defcustom ssh-agency-bin-dir
   (when (eq system-type 'windows-nt)
     ;; Git for Windows 1.x keeps ssh exes in its bin/ directory.
-    (-when-let* ((git-exe (executable-find "git.exe"))
-                 (git-dir (directory-file-name (file-name-directory git-exe))))
+    (when-let* ((git-exe (executable-find "git.exe"))
+                (git-dir (directory-file-name (file-name-directory git-exe))))
       (if (equal (file-name-nondirectory git-dir) "cmd")
           (expand-file-name "bin" (file-name-directory git-dir))
         git-dir)))
@@ -59,16 +59,16 @@
 
 (defun ssh-agency-executable-find (exe)
   "Computes default value for `ssh-agency-EXE-executable'."
-  (or (--when-let
-          (ignore-errors
-            ;; This will fail on Windows Git 1.x because it lacks
-            ;; `cygpath'.  For that version we search manually anyway.
-            (car (process-lines
-                  "git" "-c" "alias.x=!x() { which \"$1\" | cygpath -mf -; }; x"
-                  "x" exe)))
+  (or (and-let*
+          ((exe (ignore-errors
+                  ;; This will fail on Windows Git 1.x because it lacks
+                  ;; `cygpath'.  For that version we search manually anyway.
+                  (car (process-lines
+                        "git" "-c" "alias.x=!x() { which \"$1\" | cygpath -mf -; }; x"
+                        "x" exe)))))
         ;; Note: filename *must* include ".exe" suffix (if any) or
         ;; `w32-short-file-name' returns nil.
-        (or (executable-find it) it))
+        (or (executable-find exe) exe))
       (if ssh-agency-bin-dir
           (let ((bin (expand-file-name exe ssh-agency-bin-dir)))
             (and (file-executable-p bin) bin)))
@@ -97,10 +97,10 @@
 
 (defcustom ssh-agency-askpass
   (when (eq system-type 'windows-nt)
-    (-when-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
-                 (path (ignore-errors
-                         (car (process-lines
-                               "git" "-c" "alias.x=!echo \"$PATH\"" "x")))))
+    (and-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
+               (path (ignore-errors
+                       (car (process-lines
+                             "git" "-c" "alias.x=!echo \"$PATH\"" "x")))))
       ;; Windows won't have DISPLAY, but we need to fake it for
       ;; SSH_ASKPASS to be called.
       (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
@@ -149,8 +149,10 @@ ssh-agency always finds the agent without consulting this file."
     (looking-at-p "\\`.*BEGIN.*PRIVATE KEY.*$")))
 
 (defcustom ssh-agency-keys
-  (--filter (and (string-match-p "/[^.]+$" it) (ssh-agency-private-key-p it))
-            (file-expand-wildcards (expand-file-name "~/.ssh/id*")))
+  (seq-filter (lambda (file)
+                (and (string-match-p "/[^.]+$" file)
+                     (ssh-agency-private-key-p file)))
+              (file-expand-wildcards (expand-file-name "~/.ssh/id*")))
   "A list of key files to be added to the agent.
 
 `nil' indicates the default for `ssh-add' which is ~/.ssh/id_rsa,
@@ -308,11 +310,11 @@ Return the `ssh-agency-status' of the new agent, i.e. `no-keys'."
 
 If an agent is found, set the corresponding environment vars.
 Return `ssh-agency-status' of the agent."
-  (let ((pid
-          (--first (-let (((&alist 'comm comm 'user user) (process-attributes it)))
-                     (and (member comm ssh-agency-agent-exe-names)
-                          (string= user user-login-name)))
-                   (list-system-processes))))
+  (let ((pid (seq-find (lambda (process)
+                         (let-alist (process-attributes process)
+                           (and (member .comm ssh-agency-agent-exe-names)
+                                (string= .user user-login-name))))
+                       (list-system-processes))))
     (when pid
       (cl-loop for (fun . args) in ssh-agency-socket-locaters
                for (status . socket) = (apply fun args)

@@ -5,7 +5,7 @@ PKG = ssh-agency
 ELS   = $(PKG).el
 ELCS  = $(ELS:.el=.elc)
 
-DEPS  = dash
+DEPS  =
 
 EMACS      ?= emacs
 EMACS_ARGS ?=
