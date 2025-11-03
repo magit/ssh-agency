@@ -46,13 +46,13 @@
   :group 'comm)
 
 (defcustom ssh-agency-bin-dir
-  (when (eq system-type 'windows-nt)
-    ;; Git for Windows 1.x keeps ssh exes in its bin/ directory.
-    (when-let* ((git-exe (executable-find "git.exe"))
-                (git-dir (directory-file-name (file-name-directory git-exe))))
-      (if (equal (file-name-nondirectory git-dir) "cmd")
-          (expand-file-name "bin" (file-name-directory git-dir))
-        git-dir)))
+  (and-let* ((_(eq system-type 'windows-nt))
+             ;; Git for Windows 1.x keeps ssh exes in its bin/ directory.
+             (git-exe (executable-find "git.exe"))
+             (git-dir (directory-file-name (file-name-directory git-exe))))
+    (if (equal (file-name-nondirectory git-dir) "cmd")
+        (expand-file-name "bin" (file-name-directory git-dir))
+      git-dir))
   "Where to look for ssh executables."
   :group 'ssh-agency
   :type 'directory)
@@ -69,9 +69,10 @@
         ;; Note: filename *must* include ".exe" suffix (if any) or
         ;; `w32-short-file-name' returns nil.
         (or (executable-find exe) exe))
-      (if ssh-agency-bin-dir
-          (let ((bin (expand-file-name exe ssh-agency-bin-dir)))
-            (and (file-executable-p bin) bin)))
+      (and-let* ((_ ssh-agency-bin-dir)
+                 (bin (expand-file-name exe ssh-agency-bin-dir))
+                 (_(file-executable-p bin)))
+        bin)
       (executable-find exe)))
 
 (defcustom ssh-agency-add-executable
@@ -96,15 +97,15 @@
   :type '(repeat string))
 
 (defcustom ssh-agency-askpass
-  (when (eq system-type 'windows-nt)
-    (and-let* ((exe (ssh-agency-executable-find "git-gui--askpass"))
-               (path (ignore-errors
-                       (car (process-lines
-                             "git" "-c" "alias.x=!echo \"$PATH\"" "x")))))
-      ;; Windows won't have DISPLAY, but we need to fake it for
-      ;; SSH_ASKPASS to be called.
-      (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
-            (concat "PATH=" path))))
+  (and-let* ((_(eq system-type 'windows-nt))
+             (exe (ssh-agency-executable-find "git-gui--askpass"))
+             (path (ignore-errors
+                     (car (process-lines
+                           "git" "-c" "alias.x=!echo \"$PATH\"" "x")))))
+    ;; Windows won't have DISPLAY, but we need to fake it for
+    ;; SSH_ASKPASS to be called.
+    (list "DISPLAY=t" (concat "SSH_ASKPASS=" exe)
+          (concat "PATH=" path)))
   "If non-nil, let ssh-askpass query for the passphrase.
 If the value is a list, it should be in the same format as
 `process-environment', and specifies what environment variables
@@ -172,20 +173,19 @@ ssh-agency always finds the agent without consulting this file."
   "/\\(?:agent[.][0-9]+\\|ssh\\)\\'")
 
 (defcustom ssh-agency-socket-locaters
-  `(
-    ;; OpenSSH's Systemd unit: ssh-agent.service
+  `(;; OpenSSH's Systemd unit: ssh-agent.service
     ,@(let ((dir (getenv "XDG_RUNTIME_DIR")))
         (and dir
              `((ssh-agency-find-socket-from-glob
                 ,(concat dir "/" "ssh-agent.socket")))))
-    ,@(when (executable-find "ss")
-        `((ssh-agency-find-socket-from-ss
-           :glob "*ssh*" :regexp ,ssh-agency-socket-regexp)))
-    ,@(when     ; Windows has a netstat command, but it won't help us.
-          (and (not (eq system-type 'windows-nt))
-               (executable-find "netstat"))
-        `((ssh-agency-find-socket-from-netstat
-           :regexp ,ssh-agency-socket-regexp)))
+    ,@(and (executable-find "ss")
+           `((ssh-agency-find-socket-from-ss
+              :glob "*ssh*" :regexp ,ssh-agency-socket-regexp)))
+    ;; Windows has a netstat command, but it won't help us.
+    ,@(and (not (eq system-type 'windows-nt))
+           (executable-find "netstat")
+           `((ssh-agency-find-socket-from-netstat
+              :regexp ,ssh-agency-socket-regexp)))
     ;; Look in ssh-agent's default location.
     (ssh-agency-find-socket-from-glob
      ,(concat temporary-file-directory "ssh-*/agent.*")))
@@ -265,8 +265,8 @@ ssh-agency always finds the agent without consulting this file."
       (let ((exit-status
              (cond
               (ssh-agency-askpass
-               (let ((process-environment (append (when (listp ssh-agency-askpass)
-                                                    ssh-agency-askpass)
+               (let ((process-environment (append (and (listp ssh-agency-askpass)
+                                                       ssh-agency-askpass)
                                                   process-environment)))
                  (apply #'call-process ssh-add nil '(t t) nil keys)))
               ((eq system-type 'windows-nt)
@@ -310,20 +310,19 @@ Return the `ssh-agency-status' of the new agent, i.e. `no-keys'."
 
 If an agent is found, set the corresponding environment vars.
 Return `ssh-agency-status' of the agent."
-  (let ((pid (seq-find (lambda (process)
-                         (let-alist (process-attributes process)
-                           (and (member .comm ssh-agency-agent-exe-names)
-                                (string= .user user-login-name))))
-                       (list-system-processes))))
-    (when pid
-      (seq-find (pcase-lambda (`(,fun . ,args))
-                  (pcase-let ((`(,status . ,socket) (apply fun args)))
-                    (and socket
-                         (progn
-                           (setenv "SSH_AGENT_PID" (number-to-string pid))
-                           (setenv "SSH_AUTH_SOCK" socket)
-                           status))))
-                ssh-agency-socket-locaters))))
+  (and-let* ((pid (seq-find (lambda (process)
+                              (let-alist (process-attributes process)
+                                (and (member .comm ssh-agency-agent-exe-names)
+                                     (string= .user user-login-name))))
+                            (list-system-processes))))
+    (seq-find (pcase-lambda (`(,fun . ,args))
+                (pcase-let ((`(,status . ,socket) (apply fun args)))
+                  (and socket
+                       (progn
+                         (setenv "SSH_AGENT_PID" (number-to-string pid))
+                         (setenv "SSH_AUTH_SOCK" socket)
+                         status))))
+              ssh-agency-socket-locaters)))
 
 (defun ssh-agency-status ()
   "Check the status of the ssh-agent.
