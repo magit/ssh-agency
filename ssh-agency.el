@@ -158,7 +158,7 @@ ssh-agency always finds the agent without consulting this file."
 ~/.ssh/identity."
   :group 'ssh-agency
   :type '(choice (repeat (file :must-match t))
-                 (const nil :tag "ssh-add's default")))
+                 (const :tag "ssh-add's default" nil)))
 
 (defconst ssh-agency-socket-regexp
   ;; Try to match
